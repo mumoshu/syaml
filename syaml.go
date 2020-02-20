@@ -139,6 +139,16 @@ func Set(pathComponents []string, value interface{}) *Traversal {
 				switch valNode.Kind {
 				case yaml.ScalarNode:
 					valNode.Value = fmt.Sprintf("%v", value)
+
+					switch value.(type) {
+					case string:
+						valNode.Tag = "!!str"
+						valNode.Style = yaml.DoubleQuotedStyle
+					case int:
+						valNode.Tag = "!!int"
+					default:
+						panic(fmt.Errorf("unexpected type of value to set: %v(%T)", value, value))
+					}
 					return nil
 				case yaml.MappingNode:
 					valNode.Value = fmt.Sprintf("%v", value)
@@ -282,6 +292,13 @@ func Apply(node *yaml.Node, op *Traversal, cond *Condition) error {
 	return err
 }
 
+type ValueNotFoundError struct {
+}
+
+func (e *ValueNotFoundError) Error() string {
+	return "value not found for path(s)"
+}
+
 func Traverse(node *yaml.Node, tree *Traversal, createMissing bool) (*int, error) {
 	Debugf("node = %v, key = %s\n", node.Content, tree.Label)
 
@@ -292,11 +309,13 @@ func Traverse(node *yaml.Node, tree *Traversal, createMissing bool) (*int, error
 		// doc
 		for _, v := range node.Content {
 			n, err := Traverse(v, tree, createMissing)
-			if err != nil {
+			if err != nil && !errors.Is(err, &ValueNotFoundError{}) {
 				return nil, err
 			}
 
-			found += *n
+			if n != nil {
+				found += *n
+			}
 		}
 	case yaml.MappingNode:
 		processed := map[Label]bool{}
@@ -360,7 +379,7 @@ func Traverse(node *yaml.Node, tree *Traversal, createMissing bool) (*int, error
 	}
 
 	if found == 0 {
-		return nil, errors.New("value not found for path(s)")
+		return nil, &ValueNotFoundError{}
 	}
 
 	return &found, nil
@@ -371,7 +390,7 @@ func treeToYamlMapping(v *Traversal) (*yaml.Node, *yaml.Node, error) {
 
 	keyNode := &yaml.Node{
 		Kind:        yaml.ScalarNode,
-		Style:       0,
+		Style:       yaml.DoubleQuotedStyle,
 		Tag:         "!!str",
 		Value:       k,
 		Anchor:      "",
@@ -435,9 +454,7 @@ func treeToYamlMapping(v *Traversal) (*yaml.Node, *yaml.Node, error) {
 }
 
 func DumpYaml(node *yaml.Node) {
-	enc := yaml.NewEncoder(os.Stdout)
-	enc.SetIndent(2)
-	if err := enc.Encode(node); err != nil {
+	if DebugEnabled() {
 		buf := bytes.Buffer{}
 
 		enc := json.NewEncoder(&buf)
@@ -447,13 +464,21 @@ func DumpYaml(node *yaml.Node) {
 		if jsonErr == nil {
 			fmt.Fprintf(os.Stderr, "%s\n", buf.String())
 		}
+	}
 
+	enc := yaml.NewEncoder(os.Stdout)
+	enc.SetIndent(2)
+	if err := enc.Encode(node); err != nil {
 		panic(fmt.Errorf("%v", err))
 	}
 }
 
+func DebugEnabled() bool {
+	return os.Getenv("DEBUG") != ""
+}
+
 func Debugf(f string, args ...interface{}) {
-	if os.Getenv("DEBUG") != "" {
+	if DebugEnabled() {
 		Errorf(f, args...)
 	}
 }
