@@ -1,0 +1,29 @@
+#foo
+foo:
+  #aaa
+  aaa:
+    #bbb
+    bbb: c
+    #ccc
+    ccc: d
+  #bar
+  bar:
+    #baz
+    baz: 2
+  #hoge
+  hoge:
+    fuga: 3
+nested:
+  array:
+  - 1
+  - 2
+  - 3
+extra:
+  ### map1
+  map: 1
+---
+a1:
+  b1: true
+---
+a1:
+  b2: false
